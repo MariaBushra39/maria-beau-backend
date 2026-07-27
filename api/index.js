@@ -41,7 +41,7 @@ app.get('/', (req, res) => {
 });
 
 // ============================================
-// PRODUCTS ROUTE (Sab se zaroori!)
+// PRODUCTS ROUTE
 // ============================================
 app.get('/api/products', async (req, res) => {
   try {
@@ -92,10 +92,13 @@ app.get('/api/products/:id', async (req, res) => {
 });
 
 // ============================================
-// 404 HANDLER
+// ✅ 404 HANDLER — WITHOUT '*' (Express 5.2.1 fix)
 // ============================================
-app.use('*', (req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+app.use((req, res) => {
+  res.status(404).json({ 
+    error: 'Route not found',
+    path: req.path
+  });
 });
 
 module.exports = app;
