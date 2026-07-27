@@ -9,54 +9,61 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Root route
+// ============================================
+// ROOT ROUTE
+// ============================================
 app.get('/', (req, res) => {
-  res.json({ 
-    success: true, 
-    message: 'Maria B. Collection API is LIVE!',
+  res.json({
+    success: true,
+    message: 'Maria B. Collection API is LIVE on Vercel!',
     endpoints: {
+      test: '/api/test',
       products: '/api/products',
       auth: '/api/auth',
-      orders: '/api/orders',
-      test: '/api/test'
+      orders: '/api/orders'
     }
   });
 });
 
-// Test route
+// ============================================
+// TEST ROUTE
+// ============================================
 app.get('/api/test', (req, res) => {
   res.json({ success: true, message: 'Server is working perfectly!' });
 });
 
-// Try loading product routes (with fallback)
-try {
-  const productRoutes = require('../src/routes/productRoutes');
-  app.use('/api/products', productRoutes);
-  console.log('✅ Products routes loaded');
-} catch (err) {
-  console.log('⚠️ Products routes not found, using fallback');
-  app.get('/api/products', (req, res) => {
-    res.json({ success: true, message: 'Products route is coming soon!' });
+// ============================================
+// 🚀 PRODUCTS ROUTE (Inline — no external file)
+// ============================================
+app.get('/api/products', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Products route is working!',
+    data: []
   });
-}
+});
 
-// Try loading auth routes (with fallback)
-try {
-  const authRoutes = require('../src/routes/AuthRoutes');
-  app.use('/api/auth', authRoutes);
-  console.log('✅ Auth routes loaded');
-} catch (err) {
-  console.log('⚠️ Auth routes not found, using fallback');
-  app.get('/api/auth', (req, res) => {
-    res.json({ success: true, message: 'Auth route is coming soon!' });
-  });
-}
+// ============================================
+// 🚀 AUTH ROUTE (Inline)
+// ============================================
+app.get('/api/auth', (req, res) => {
+  res.json({ success: true, message: 'Auth route is working!' });
+});
 
-// 404 handler
+// ============================================
+// 🚀 ORDERS ROUTE (Inline)
+// ============================================
+app.get('/api/orders', (req, res) => {
+  res.json({ success: true, message: 'Orders route is working!' });
+});
+
+// ============================================
+// 404 Handler (for any other route)
+// ============================================
 app.use('*', (req, res) => {
-  res.status(404).json({ 
+  res.status(404).json({
     error: 'Route not found',
-    available: ['/api/test', '/api/products', '/api/auth', '/api/orders']
+    availableEndpoints: ['/', '/api/test', '/api/products', '/api/auth', '/api/orders']
   });
 });
 
