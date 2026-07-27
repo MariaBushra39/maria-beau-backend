@@ -15,13 +15,8 @@ app.use(express.json());
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: 'Maria B. Collection API is LIVE on Vercel!',
-    endpoints: {
-      test: '/api/test',
-      products: '/api/products',
-      auth: '/api/auth',
-      orders: '/api/orders'
-    }
+    message: 'Maria B. Collection API is LIVE!',
+    endpoints: ['/api/test', '/api/products', '/api/auth', '/api/orders']
   });
 });
 
@@ -33,37 +28,46 @@ app.get('/api/test', (req, res) => {
 });
 
 // ============================================
-// 🚀 PRODUCTS ROUTE (Inline — no external file)
+// PRODUCTS ROUTE (with DB connection test)
 // ============================================
 app.get('/api/products', (req, res) => {
+  // Check if DATABASE_URL exists
+  if (!process.env.DATABASE_URL) {
+    return res.json({
+      success: false,
+      message: 'DATABASE_URL not set in environment variables',
+      data: []
+    });
+  }
+  
   res.json({
     success: true,
-    message: 'Products route is working!',
+    message: 'Products route is working! Database URL is set.',
     data: []
   });
 });
 
 // ============================================
-// 🚀 AUTH ROUTE (Inline)
+// AUTH ROUTE
 // ============================================
 app.get('/api/auth', (req, res) => {
   res.json({ success: true, message: 'Auth route is working!' });
 });
 
 // ============================================
-// 🚀 ORDERS ROUTE (Inline)
+// ORDERS ROUTE
 // ============================================
 app.get('/api/orders', (req, res) => {
   res.json({ success: true, message: 'Orders route is working!' });
 });
 
 // ============================================
-// 404 Handler (for any other route)
+// 404 HANDLER
 // ============================================
 app.use('*', (req, res) => {
   res.status(404).json({
     error: 'Route not found',
-    availableEndpoints: ['/', '/api/test', '/api/products', '/api/auth', '/api/orders']
+    available: ['/', '/api/test', '/api/products', '/api/auth', '/api/orders']
   });
 });
 
