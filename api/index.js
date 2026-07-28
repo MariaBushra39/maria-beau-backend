@@ -9,9 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ============================================
-// DATABASE CONNECTION
-// ============================================
+// Database connection
 let db;
 const connectDB = async () => {
   if (!db) {
@@ -29,9 +27,7 @@ const connectDB = async () => {
   return db;
 };
 
-// ============================================
-// ROOT ROUTE (Test ke liye)
-// ============================================
+// Root route
 app.get('/', (req, res) => {
   res.json({
     success: true,
@@ -40,17 +36,24 @@ app.get('/', (req, res) => {
   });
 });
 
-// ============================================
-// PRODUCTS ROUTE
-// ============================================
+// Products route
 app.get('/api/products', async (req, res) => {
   try {
     const connection = await connectDB();
     const [rows] = await connection.query('SELECT * FROM products ORDER BY created_at DESC');
     
+    // ✅ SAFE IMAGES PARSING
     const products = rows.map(p => ({
       ...p,
-      images: p.images ? JSON.parse(p.images) : []
+      images: p.images ? (() => {
+        try {
+          const parsed = JSON.parse(p.images);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch (e) {
+          // Invalid JSON -> treat as plain string
+          return [p.images];
+        }
+      })() : []
     }));
 
     res.json({
@@ -67,9 +70,7 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// ============================================
-// SINGLE PRODUCT ROUTE
-// ============================================
+// Single product route
 app.get('/api/products/:id', async (req, res) => {
   try {
     const connection = await connectDB();
@@ -81,7 +82,14 @@ app.get('/api/products/:id', async (req, res) => {
     
     const product = {
       ...rows[0],
-      images: rows[0].images ? JSON.parse(rows[0].images) : []
+      images: rows[0].images ? (() => {
+        try {
+          const parsed = JSON.parse(rows[0].images);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch (e) {
+          return [rows[0].images];
+        }
+      })() : []
     };
     
     res.json({ success: true, data: product });
@@ -91,14 +99,9 @@ app.get('/api/products/:id', async (req, res) => {
   }
 });
 
-// ============================================
-// ✅ 404 HANDLER — WITHOUT '*' (Express 5.2.1 fix)
-// ============================================
+// 404 handler
 app.use((req, res) => {
-  res.status(404).json({ 
-    error: 'Route not found',
-    path: req.path
-  });
+  res.status(404).json({ error: 'Route not found' });
 });
 
 module.exports = app;
