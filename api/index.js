@@ -62,39 +62,31 @@ app.get('/api/test', (req, res) => {
 });
 
 // ============================================
-// ============================================
-// 🔐 AUTH ROUTES (INLINE)
-// ============================================
+// 🔐 AUTH ROUTES
 // ============================================
 
-// REGISTER
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
     const connection = await connectDB();
 
-    // Check if user exists
     const [existing] = await connection.query('SELECT * FROM users WHERE email = ?', [email]);
     if (existing.length > 0) {
       return res.status(400).json({ success: false, message: 'User already exists' });
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Insert user
-    const [result] = await connection.query(
+    await connection.query(
       'INSERT INTO users (id, name, email, password) VALUES (UUID(), ?, ?, ?)',
       [name, email, hashedPassword]
     );
 
-    // Generate token
     const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     res.json({
       success: true,
       token,
-      user: { id: result.insertId, name, email }
+      user: { name, email }
     });
   } catch (error) {
     console.error('❌ Register error:', error.message);
@@ -102,7 +94,6 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// LOGIN
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -132,7 +123,6 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// FORGOT PASSWORD
 app.post('/api/auth/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
@@ -144,7 +134,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     }
 
     const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '1h' });
-    const resetLink = `https://maria-beau-frontend.vercel.app/reset-password/${token}`;
+    const resetLink = `https://maria-beau-frontend-lake.vercel.app/reset-password/${token}`;
 
     await connection.query(
       'UPDATE users SET reset_password_token = ?, reset_password_expires = ? WHERE email = ?',
@@ -165,7 +155,6 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   }
 });
 
-// RESET PASSWORD
 app.post('/api/auth/reset-password', async (req, res) => {
   try {
     const { token, newPassword } = req.body;
@@ -195,9 +184,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
 });
 
 // ============================================
-// ============================================
-// 📦 ORDER ROUTES (INLINE)
-// ============================================
+// 📦 ORDER ROUTE
 // ============================================
 
 app.post('/api/orders', async (req, res) => {
@@ -205,7 +192,6 @@ app.post('/api/orders', async (req, res) => {
     const { totalPrice, shippingAddress, paymentMethod, items } = req.body;
     const connection = await connectDB();
 
-    // Get user from token
     const token = req.headers.authorization?.split(' ')[1];
     let userId = null;
     if (token) {
@@ -215,17 +201,14 @@ app.post('/api/orders', async (req, res) => {
       } catch (e) {}
     }
 
-    // Insert order
     const [orderResult] = await connection.query(
       'INSERT INTO orders (id, user_id, total_price, status, shipping_address, payment_method) VALUES (UUID(), ?, ?, ?, ?, ?)',
       [userId, totalPrice, 'pending', JSON.stringify(shippingAddress), paymentMethod]
     );
 
-    // Get order ID
     const [orderRows] = await connection.query('SELECT id FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', [userId || 1]);
     const orderId = orderRows[0]?.id;
 
-    // Insert order items
     for (const item of items) {
       await connection.query(
         'INSERT INTO order_items (id, order_id, product_id, quantity, price) VALUES (UUID(), ?, ?, ?, ?)',
@@ -233,7 +216,6 @@ app.post('/api/orders', async (req, res) => {
       );
     }
 
-    // Send confirmation email
     try {
       await transporter.sendMail({
         from: process.env.EMAIL_USER,
@@ -253,8 +235,9 @@ app.post('/api/orders', async (req, res) => {
 });
 
 // ============================================
-// PRODUCTS ROUTE
+// PRODUCTS ROUTES
 // ============================================
+
 app.get('/api/products', async (req, res) => {
   try {
     const connection = await connectDB();
@@ -279,9 +262,6 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// ============================================
-// SINGLE PRODUCT ROUTE
-// ============================================
 app.get('/api/products/:id', async (req, res) => {
   try {
     const connection = await connectDB();
