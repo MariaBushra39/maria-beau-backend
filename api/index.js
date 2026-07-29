@@ -2,6 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const mysql = require('mysql2/promise');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
 
 dotenv.config();
 
@@ -30,6 +33,17 @@ const connectDB = async () => {
 };
 
 // ============================================
+// EMAIL TRANSPORTER
+// ============================================
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
+// ============================================
 // ROOT ROUTE
 // ============================================
 app.get('/', (req, res) => {
@@ -45,6 +59,197 @@ app.get('/', (req, res) => {
 // ============================================
 app.get('/api/test', (req, res) => {
   res.json({ success: true, message: 'Server is working perfectly!' });
+});
+
+// ============================================
+// ============================================
+// 🔐 AUTH ROUTES (INLINE)
+// ============================================
+// ============================================
+
+// REGISTER
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+    const connection = await connectDB();
+
+    // Check if user exists
+    const [existing] = await connection.query('SELECT * FROM users WHERE email = ?', [email]);
+    if (existing.length > 0) {
+      return res.status(400).json({ success: false, message: 'User already exists' });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Insert user
+    const [result] = await connection.query(
+      'INSERT INTO users (id, name, email, password) VALUES (UUID(), ?, ?, ?)',
+      [name, email, hashedPassword]
+    );
+
+    // Generate token
+    const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    res.json({
+      success: true,
+      token,
+      user: { id: result.insertId, name, email }
+    });
+  } catch (error) {
+    console.error('❌ Register error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// LOGIN
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const connection = await connectDB();
+
+    const [users] = await connection.query('SELECT * FROM users WHERE email = ?', [email]);
+    if (users.length === 0) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+
+    const user = users[0];
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+
+    const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    res.json({
+      success: true,
+      token,
+      user: { id: user.id, name: user.name, email: user.email, role: user.role }
+    });
+  } catch (error) {
+    console.error('❌ Login error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// FORGOT PASSWORD
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const connection = await connectDB();
+
+    const [users] = await connection.query('SELECT * FROM users WHERE email = ?', [email]);
+    if (users.length === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const resetLink = `https://maria-beau-frontend.vercel.app/reset-password/${token}`;
+
+    await connection.query(
+      'UPDATE users SET reset_password_token = ?, reset_password_expires = ? WHERE email = ?',
+      [token, Date.now() + 3600000, email]
+    );
+
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: 'Reset Password - MariaBeau',
+      html: `<p>Click <a href="${resetLink}">here</a> to reset your password. This link expires in 1 hour.</p>`
+    });
+
+    res.json({ success: true, message: 'Reset link sent to your email' });
+  } catch (error) {
+    console.error('❌ Forgot password error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// RESET PASSWORD
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    const connection = await connectDB();
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const [users] = await connection.query(
+      'SELECT * FROM users WHERE email = ? AND reset_password_token = ? AND reset_password_expires > ?',
+      [decoded.email, token, Date.now()]
+    );
+
+    if (users.length === 0) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired token' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await connection.query(
+      'UPDATE users SET password = ?, reset_password_token = NULL, reset_password_expires = NULL WHERE email = ?',
+      [hashedPassword, decoded.email]
+    );
+
+    res.json({ success: true, message: 'Password reset successful' });
+  } catch (error) {
+    console.error('❌ Reset password error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ============================================
+// ============================================
+// 📦 ORDER ROUTES (INLINE)
+// ============================================
+// ============================================
+
+app.post('/api/orders', async (req, res) => {
+  try {
+    const { totalPrice, shippingAddress, paymentMethod, items } = req.body;
+    const connection = await connectDB();
+
+    // Get user from token
+    const token = req.headers.authorization?.split(' ')[1];
+    let userId = null;
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        userId = decoded.id;
+      } catch (e) {}
+    }
+
+    // Insert order
+    const [orderResult] = await connection.query(
+      'INSERT INTO orders (id, user_id, total_price, status, shipping_address, payment_method) VALUES (UUID(), ?, ?, ?, ?, ?)',
+      [userId, totalPrice, 'pending', JSON.stringify(shippingAddress), paymentMethod]
+    );
+
+    // Get order ID
+    const [orderRows] = await connection.query('SELECT id FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', [userId || 1]);
+    const orderId = orderRows[0]?.id;
+
+    // Insert order items
+    for (const item of items) {
+      await connection.query(
+        'INSERT INTO order_items (id, order_id, product_id, quantity, price) VALUES (UUID(), ?, ?, ?, ?)',
+        [orderId, item.product_id, item.quantity, item.price]
+      );
+    }
+
+    // Send confirmation email
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: shippingAddress.email || 'mariabushra392@gmail.com',
+        subject: 'Order Confirmation - MariaBeau',
+        html: `<p>Thank you for your order!</p><p>Order ID: ${orderId}</p><p>Total: Rs. ${totalPrice}</p>`
+      });
+    } catch (emailError) {
+      console.error('⚠️ Email send failed:', emailError.message);
+    }
+
+    res.json({ success: true, data: { orderId } });
+  } catch (error) {
+    console.error('❌ Order error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
 });
 
 // ============================================
@@ -104,34 +309,6 @@ app.get('/api/products/:id', async (req, res) => {
     res.status(500).json({ success: false, message: 'Error fetching product' });
   }
 });
-
-// ============================================
-// AUTH ROUTES (Import from external file)
-// ============================================
-try {
-  const authRoutes = require('../src/routes/AuthRoutes');
-  app.use('/api/auth', authRoutes);
-  console.log('✅ Auth routes loaded');
-} catch (error) {
-  console.error('❌ Auth routes not found:', error.message);
-  app.use('/api/auth', (req, res) => {
-    res.status(404).json({ error: 'Auth routes not available' });
-  });
-}
-
-// ============================================
-// ORDER ROUTES (Import from external file)
-// ============================================
-try {
-  const orderRoutes = require('../src/routes/orderRoutes');
-  app.use('/api/orders', orderRoutes);
-  console.log('✅ Order routes loaded');
-} catch (error) {
-  console.error('❌ Order routes not found:', error.message);
-  app.use('/api/orders', (req, res) => {
-    res.status(404).json({ error: 'Order routes not available' });
-  });
-}
 
 // ============================================
 // 404 HANDLER
