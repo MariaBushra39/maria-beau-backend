@@ -9,7 +9,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Database connection
+// ============================================
+// DATABASE CONNECTION
+// ============================================
 let db;
 const connectDB = async () => {
   if (!db) {
@@ -27,7 +29,9 @@ const connectDB = async () => {
   return db;
 };
 
-// Root route
+// ============================================
+// ROOT ROUTE
+// ============================================
 app.get('/', (req, res) => {
   res.json({
     success: true,
@@ -36,13 +40,21 @@ app.get('/', (req, res) => {
   });
 });
 
-// Products route
+// ============================================
+// TEST ROUTE
+// ============================================
+app.get('/api/test', (req, res) => {
+  res.json({ success: true, message: 'Server is working perfectly!' });
+});
+
+// ============================================
+// PRODUCTS ROUTE
+// ============================================
 app.get('/api/products', async (req, res) => {
   try {
     const connection = await connectDB();
     const [rows] = await connection.query('SELECT * FROM products ORDER BY created_at DESC');
     
-    // ✅ SAFE IMAGES PARSING
     const products = rows.map(p => ({
       ...p,
       images: p.images ? (() => {
@@ -50,27 +62,21 @@ app.get('/api/products', async (req, res) => {
           const parsed = JSON.parse(p.images);
           return Array.isArray(parsed) ? parsed : [parsed];
         } catch (e) {
-          // Invalid JSON -> treat as plain string
           return [p.images];
         }
       })() : []
     }));
 
-    res.json({
-      success: true,
-      data: products
-    });
+    res.json({ success: true, data: products });
   } catch (error) {
     console.error('❌ Products error:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching products',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error fetching products', error: error.message });
   }
 });
 
-// Single product route
+// ============================================
+// SINGLE PRODUCT ROUTE
+// ============================================
 app.get('/api/products/:id', async (req, res) => {
   try {
     const connection = await connectDB();
@@ -99,7 +105,37 @@ app.get('/api/products/:id', async (req, res) => {
   }
 });
 
-// 404 handler
+// ============================================
+// AUTH ROUTES (Import from external file)
+// ============================================
+try {
+  const authRoutes = require('../src/routes/AuthRoutes');
+  app.use('/api/auth', authRoutes);
+  console.log('✅ Auth routes loaded');
+} catch (error) {
+  console.error('❌ Auth routes not found:', error.message);
+  app.use('/api/auth', (req, res) => {
+    res.status(404).json({ error: 'Auth routes not available' });
+  });
+}
+
+// ============================================
+// ORDER ROUTES (Import from external file)
+// ============================================
+try {
+  const orderRoutes = require('../src/routes/orderRoutes');
+  app.use('/api/orders', orderRoutes);
+  console.log('✅ Order routes loaded');
+} catch (error) {
+  console.error('❌ Order routes not found:', error.message);
+  app.use('/api/orders', (req, res) => {
+    res.status(404).json({ error: 'Order routes not available' });
+  });
+}
+
+// ============================================
+// 404 HANDLER
+// ============================================
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
