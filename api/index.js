@@ -62,25 +62,31 @@ app.get('/api/test', (req, res) => {
 });
 
 // ============================================
-// 🔐 AUTH ROUTES
+// 🔐 AUTH ROUTES (INLINE)
 // ============================================
 
+// REGISTER
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
     const connection = await connectDB();
 
+    // Check if user exists
     const [existing] = await connection.query('SELECT * FROM users WHERE email = ?', [email]);
     if (existing.length > 0) {
       return res.status(400).json({ success: false, message: 'User already exists' });
     }
 
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Insert user
     await connection.query(
       'INSERT INTO users (id, name, email, password) VALUES (UUID(), ?, ?, ?)',
       [name, email, hashedPassword]
     );
 
+    // Generate token
     const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     res.json({
@@ -94,6 +100,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+// LOGIN
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -123,6 +130,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// FORGOT PASSWORD
 app.post('/api/auth/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
@@ -155,6 +163,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   }
 });
 
+// RESET PASSWORD
 app.post('/api/auth/reset-password', async (req, res) => {
   try {
     const { token, newPassword } = req.body;
