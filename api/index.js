@@ -1,4 +1,4 @@
-console.log('🚀 FRESH DEPLOYMENT - CACHE BYPASS ' + Date.now());
+// console.log('🚀 FRESH DEPLOYMENT - CACHE BYPASS ' + Date.now());
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
@@ -14,19 +14,31 @@ app.use(cors());
 app.use(express.json());
 
 // ============================================
-// DATABASE CONNECTION
+// DATABASE CONNECTION (FIXED SSL)
 // ============================================
 let db;
 const connectDB = async () => {
   if (!db) {
-    const connectionConfig = process.env.DATABASE_URL
-      ? { uri: process.env.DATABASE_URL }
-      : {
-          host: process.env.DB_HOST || 'localhost',
-          user: process.env.DB_USER || 'root',
-          password: process.env.DB_PASSWORD || '',
-          database: process.env.DB_NAME || 'maria_b_db'
-        };
+    let connectionConfig;
+    if (process.env.DATABASE_URL) {
+      // ✅ Remove ?ssl-mode=REQUIRED if present and add SSL options
+      let url = process.env.DATABASE_URL;
+      // Remove query string
+      const urlObj = new URL(url);
+      urlObj.search = ''; // Remove all query params
+      const cleanUri = urlObj.toString();
+      connectionConfig = {
+        uri: cleanUri,
+        ssl: { rejectUnauthorized: false }
+      };
+    } else {
+      connectionConfig = {
+        host: process.env.DB_HOST || 'localhost',
+        user: process.env.DB_USER || 'root',
+        password: process.env.DB_PASSWORD || '',
+        database: process.env.DB_NAME || 'maria_b_db'
+      };
+    }
     db = await mysql.createConnection(connectionConfig);
     console.log('✅ Database connected');
   }
