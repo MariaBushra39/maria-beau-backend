@@ -1,4 +1,4 @@
-console.log('🚀 DEPLOY ' + Date.now());  // Date.now() change karo
+// console.log('🚀 FRESH DEPLOYMENT - CACHE BYPASS ' + Date.now());
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
@@ -73,6 +73,20 @@ app.get('/api/test', (req, res) => {
 });
 
 // ============================================
+// DATABASE TEST ROUTE (Diagnostic)
+// ============================================
+app.get('/api/db-test', async (req, res) => {
+  try {
+    const connection = await connectDB();
+    const [rows] = await connection.query('SELECT 1 as test');
+    res.json({ success: true, message: 'Database connected!', data: rows });
+  } catch (error) {
+    console.error('❌ DB Test error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
 // 🔐 AUTH ROUTES (INLINE)
 // ============================================
 
@@ -102,7 +116,13 @@ app.post('/api/auth/register', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Register error:', error.message);
-    res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    console.error(error.stack);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error', 
+      error: error.message,
+      stack: error.stack 
+    });
   }
 });
 
@@ -171,7 +191,13 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     res.json({ success: true, message: 'Reset link sent to your email' });
   } catch (error) {
     console.error('❌ Forgot password error:', error.message);
-    res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    console.error(error.stack);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error', 
+      error: error.message,
+      stack: error.stack 
+    });
   }
 });
 
@@ -200,7 +226,13 @@ app.post('/api/auth/reset-password', async (req, res) => {
     res.json({ success: true, message: 'Password reset successful' });
   } catch (error) {
     console.error('❌ Reset password error:', error.message);
-    res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    console.error(error.stack);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error', 
+      error: error.message,
+      stack: error.stack 
+    });
   }
 });
 
@@ -251,7 +283,13 @@ app.post('/api/orders', async (req, res) => {
     res.json({ success: true, data: { orderId } });
   } catch (error) {
     console.error('❌ Order error:', error.message);
-    res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    console.error(error.stack);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error', 
+      error: error.message,
+      stack: error.stack 
+    });
   }
 });
 
