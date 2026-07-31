@@ -21,11 +21,9 @@ const connectDB = async () => {
   if (!db) {
     let connectionConfig;
     if (process.env.DATABASE_URL) {
-      // ✅ Remove ?ssl-mode=REQUIRED if present and add SSL options
       let url = process.env.DATABASE_URL;
-      // Remove query string
       const urlObj = new URL(url);
-      urlObj.search = ''; // Remove all query params
+      urlObj.search = '';
       const cleanUri = urlObj.toString();
       connectionConfig = {
         uri: cleanUri,
@@ -84,22 +82,17 @@ app.post('/api/auth/register', async (req, res) => {
     const { name, email, password } = req.body;
     const connection = await connectDB();
 
-    // Check if user exists
     const [existing] = await connection.query('SELECT * FROM users WHERE email = ?', [email]);
     if (existing.length > 0) {
       return res.status(400).json({ success: false, message: 'User already exists' });
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Insert user
     await connection.query(
       'INSERT INTO users (id, name, email, password) VALUES (UUID(), ?, ?, ?)',
       [name, email, hashedPassword]
     );
 
-    // Generate token
     const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     res.json({
@@ -109,7 +102,7 @@ app.post('/api/auth/register', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Register error:', error.message);
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 });
 
@@ -139,7 +132,13 @@ app.post('/api/auth/login', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Login error:', error.message);
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('❌ Stack trace:', error.stack);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error', 
+      error: error.message,
+      stack: error.stack 
+    });
   }
 });
 
@@ -172,7 +171,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     res.json({ success: true, message: 'Reset link sent to your email' });
   } catch (error) {
     console.error('❌ Forgot password error:', error.message);
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 });
 
@@ -201,7 +200,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
     res.json({ success: true, message: 'Password reset successful' });
   } catch (error) {
     console.error('❌ Reset password error:', error.message);
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 });
 
@@ -252,7 +251,7 @@ app.post('/api/orders', async (req, res) => {
     res.json({ success: true, data: { orderId } });
   } catch (error) {
     console.error('❌ Order error:', error.message);
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 });
 
