@@ -3,5 +3,6 @@
     "api/index.js": {
       "maxDuration": 10
     }
-  }
+  },
+  "outputDirectory": ""
 }
