@@ -236,6 +236,33 @@ app.post('/api/auth/reset-password', async (req, res) => {
   }
 });
 
+// GET CURRENT USER (ME)
+app.get('/api/auth/me', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'No token provided' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const connection = await connectDB();
+
+    const [users] = await connection.query(
+      'SELECT id, name, email, role, profile_pic FROM users WHERE id = ?',
+      [decoded.id]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    res.json({ success: true, user: users[0] });
+  } catch (error) {
+    console.error('❌ /api/auth/me error:', error.message);
+    res.status(401).json({ success: false, message: 'Invalid or expired token' });
+  }
+});
+
 // ============================================
 // 📦 ORDER ROUTE
 // ============================================
