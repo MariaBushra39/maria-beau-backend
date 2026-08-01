@@ -55,6 +55,36 @@ const transporter = nodemailer.createTransport({
 });
 
 // ============================================
+// 🛡️ ADMIN AUTH HELPER (used by admin-only routes)
+// ============================================
+const requireAdmin = async (req) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    const err = new Error('No token provided');
+    err.status = 401;
+    throw err;
+  }
+
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  const connection = await connectDB();
+  const [users] = await connection.query('SELECT id, role FROM users WHERE id = ?', [decoded.id]);
+
+  if (users.length === 0) {
+    const err = new Error('User not found');
+    err.status = 404;
+    throw err;
+  }
+
+  if (users[0].role !== 'admin') {
+    const err = new Error('Admin access required');
+    err.status = 403;
+    throw err;
+  }
+
+  return users[0];
+};
+
+// ============================================
 // ROOT ROUTE
 // ============================================
 app.get('/', (req, res) => {
@@ -321,6 +351,44 @@ app.post('/api/orders', async (req, res) => {
 });
 
 // ============================================
+// 🛡️ ADMIN ORDER ROUTES
+// ============================================
+
+// GET ALL ORDERS (Admin only)
+app.get('/api/orders/admin/all', async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const connection = await connectDB();
+    const [rows] = await connection.query(
+      `SELECT o.*, u.name AS user_name 
+       FROM orders o 
+       LEFT JOIN users u ON o.user_id = u.id 
+       ORDER BY o.created_at DESC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('❌ Admin get orders error:', error.message);
+    const status = error.status || 500;
+    res.status(status).json({ success: false, message: error.message || 'Server error' });
+  }
+});
+
+// UPDATE ORDER STATUS (Admin only)
+app.put('/api/orders/:id/status', async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const { status } = req.body;
+    const connection = await connectDB();
+    await connection.query('UPDATE orders SET status = ? WHERE id = ?', [status, req.params.id]);
+    res.json({ success: true, message: 'Order status updated' });
+  } catch (error) {
+    console.error('❌ Update order status error:', error.message);
+    const status = error.status || 500;
+    res.status(status).json({ success: false, message: error.message || 'Server error' });
+  }
+});
+
+// ============================================
 // PRODUCTS ROUTES
 // ============================================
 
@@ -373,6 +441,92 @@ app.get('/api/products/:id', async (req, res) => {
   } catch (error) {
     console.error('❌ Product error:', error.message);
     res.status(500).json({ success: false, message: 'Error fetching product' });
+  }
+});
+
+// ADD NEW PRODUCT (Admin only)
+app.post('/api/products', async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const { name, description, price, category, subcategory, sizes, colors, images, stock, is_featured } = req.body;
+    const connection = await connectDB();
+
+    await connection.query(
+      `INSERT INTO products (id, name, description, price, category, subcategory, sizes, colors, images, stock, is_featured) 
+       VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        name,
+        description || null,
+        price,
+        category,
+        subcategory || null,
+        JSON.stringify(sizes || []),
+        JSON.stringify(colors || []),
+        JSON.stringify(images || []),
+        stock || 0,
+        is_featured ? 1 : 0
+      ]
+    );
+
+    const [rows] = await connection.query(
+      'SELECT id FROM products WHERE name = ? ORDER BY created_at DESC LIMIT 1',
+      [name]
+    );
+
+    res.json({ success: true, data: { id: rows[0]?.id }, message: 'Product added successfully' });
+  } catch (error) {
+    console.error('❌ Add product error:', error.message);
+    const status = error.status || 500;
+    res.status(status).json({ success: false, message: error.message || 'Server error' });
+  }
+});
+
+// UPDATE PRODUCT (Admin only)
+app.put('/api/products/:id', async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const { name, description, price, category, subcategory, sizes, colors, images, stock, is_featured } = req.body;
+    const connection = await connectDB();
+
+    await connection.query(
+      `UPDATE products 
+       SET name = ?, description = ?, price = ?, category = ?, subcategory = ?, 
+           sizes = ?, colors = ?, images = ?, stock = ?, is_featured = ? 
+       WHERE id = ?`,
+      [
+        name,
+        description || null,
+        price,
+        category,
+        subcategory || null,
+        JSON.stringify(sizes || []),
+        JSON.stringify(colors || []),
+        JSON.stringify(images || []),
+        stock || 0,
+        is_featured ? 1 : 0,
+        req.params.id
+      ]
+    );
+
+    res.json({ success: true, message: 'Product updated successfully' });
+  } catch (error) {
+    console.error('❌ Update product error:', error.message);
+    const status = error.status || 500;
+    res.status(status).json({ success: false, message: error.message || 'Server error' });
+  }
+});
+
+// DELETE PRODUCT (Admin only)
+app.delete('/api/products/:id', async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const connection = await connectDB();
+    await connection.query('DELETE FROM products WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'Product deleted successfully' });
+  } catch (error) {
+    console.error('❌ Delete product error:', error.message);
+    const status = error.status || 500;
+    res.status(status).json({ success: false, message: error.message || 'Server error' });
   }
 });
 
