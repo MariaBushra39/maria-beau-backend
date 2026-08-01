@@ -1,8 +1,14 @@
 {
-  "buildCommand": "echo 'Serverless functions - no build needed'",
-  "functions": {
-    "api/index.js": {
-      "maxDuration": 10
+  "builds": [
+    {
+      "src": "api/index.js",
+      "use": "@vercel/node"
     }
-  }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/index.js"
+    }
+  ]
 }
