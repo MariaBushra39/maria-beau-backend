@@ -1,8 +1,8 @@
 {
+  "buildCommand": "echo 'Serverless functions - no build needed'",
   "functions": {
     "api/index.js": {
       "maxDuration": 10
     }
-  },
-  "outputDirectory": ""
+  }
 }
