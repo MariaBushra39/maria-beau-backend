@@ -6,12 +6,26 @@ const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
+const multer = require('multer');
+const cloudinary = require('cloudinary').v2;
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// ============================================
+// CLOUDINARY CONFIG
+// ============================================
+cloudinary.config({
+  cloud_name: 'bvqvahxw',
+  api_key: '864735194487412',
+  api_secret: 'NBNEHDrFjPVAXftWYEyOcf0rLZk'
+});
+
+// Multer - keep file in memory, then stream to Cloudinary
+const upload = multer({ storage: multer.memoryStorage() });
 
 // ============================================
 // DATABASE CONNECTION (FIXED SSL)
@@ -441,6 +455,43 @@ app.get('/api/products/:id', async (req, res) => {
   } catch (error) {
     console.error('❌ Product error:', error.message);
     res.status(500).json({ success: false, message: 'Error fetching product' });
+  }
+});
+
+// ============================================
+// 🖼️ IMAGE UPLOAD (Admin only, uploads to Cloudinary)
+// ============================================
+app.post('/api/products/upload-image', upload.single('image'), async (req, res) => {
+  try {
+    await requireAdmin(req);
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No image file provided' });
+    }
+
+    const uploadFromBuffer = () => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: 'mariabeau_products' },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        stream.end(req.file.buffer);
+      });
+    };
+
+    const result = await uploadFromBuffer();
+
+    res.json({
+      success: true,
+      data: { filename: result.secure_url }
+    });
+  } catch (error) {
+    console.error('❌ Image upload error:', error.message);
+    const status = error.status || 500;
+    res.status(status).json({ success: false, message: error.message || 'Image upload failed' });
   }
 });
 
