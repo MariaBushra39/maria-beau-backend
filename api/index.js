@@ -406,6 +406,24 @@ app.put('/api/orders/:id/status', async (req, res) => {
 // PRODUCTS ROUTES
 // ============================================
 
+// Safely normalize the "images" field into a flat array of strings.
+// IMPORTANT: mysql2 auto-parses JSON columns, so p.images may already be
+// an array (not a string). Re-running JSON.parse on an already-parsed
+// array was the bug causing nested arrays like [["url.jpg"]].
+const parseImages = (images) => {
+  if (!images) return [];
+  if (Array.isArray(images)) return images;
+  if (typeof images === 'string') {
+    try {
+      const parsed = JSON.parse(images);
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch (e) {
+      return [images];
+    }
+  }
+  return [images];
+};
+
 app.get('/api/products', async (req, res) => {
   try {
     const connection = await connectDB();
@@ -413,14 +431,7 @@ app.get('/api/products', async (req, res) => {
     
     const products = rows.map(p => ({
       ...p,
-      images: p.images ? (() => {
-        try {
-          const parsed = JSON.parse(p.images);
-          return Array.isArray(parsed) ? parsed : [parsed];
-        } catch (e) {
-          return [p.images];
-        }
-      })() : []
+      images: parseImages(p.images)
     }));
 
     res.json({ success: true, data: products });
@@ -441,14 +452,7 @@ app.get('/api/products/:id', async (req, res) => {
     
     const product = {
       ...rows[0],
-      images: rows[0].images ? (() => {
-        try {
-          const parsed = JSON.parse(rows[0].images);
-          return Array.isArray(parsed) ? parsed : [parsed];
-        } catch (e) {
-          return [rows[0].images];
-        }
-      })() : []
+      images: parseImages(rows[0].images)
     };
     
     res.json({ success: true, data: product });
