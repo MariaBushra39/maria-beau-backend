@@ -503,16 +503,17 @@ app.post('/api/products/upload-image', upload.single('image'), async (req, res) 
 app.post('/api/products', async (req, res) => {
   try {
     await requireAdmin(req);
-    const { name, description, price, category, subcategory, sizes, colors, images, stock, is_featured } = req.body;
+    const { name, description, price, discount_price, category, subcategory, sizes, colors, images, stock, is_featured } = req.body;
     const connection = await connectDB();
 
     await connection.query(
-      `INSERT INTO products (id, name, description, price, category, subcategory, sizes, colors, images, stock, is_featured) 
-       VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO products (id, name, description, price, discount_price, category, subcategory, sizes, colors, images, stock, is_featured) 
+       VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         name,
         description || null,
         price,
+        discount_price || null,
         category,
         subcategory || null,
         JSON.stringify(sizes || []),
@@ -540,18 +541,19 @@ app.post('/api/products', async (req, res) => {
 app.put('/api/products/:id', async (req, res) => {
   try {
     await requireAdmin(req);
-    const { name, description, price, category, subcategory, sizes, colors, images, stock, is_featured } = req.body;
+    const { name, description, price, discount_price, category, subcategory, sizes, colors, images, stock, is_featured } = req.body;
     const connection = await connectDB();
 
     await connection.query(
       `UPDATE products 
-       SET name = ?, description = ?, price = ?, category = ?, subcategory = ?, 
+       SET name = ?, description = ?, price = ?, discount_price = ?, category = ?, subcategory = ?, 
            sizes = ?, colors = ?, images = ?, stock = ?, is_featured = ? 
        WHERE id = ?`,
       [
         name,
         description || null,
         price,
+        discount_price || null,
         category,
         subcategory || null,
         JSON.stringify(sizes || []),
