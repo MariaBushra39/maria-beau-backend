@@ -228,8 +228,43 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
-      subject: 'Reset Password - MariaBeau',
-      html: `<p>Click <a href="${resetLink}">here</a> to reset your password. This link expires in 1 hour.</p>`
+      subject: 'Reset Your Password - MariaBeau',
+      html: `
+      <div style="background:#f5f0eb; padding:40px 20px; font-family:'Helvetica Neue', Arial, sans-serif;">
+        <table role="presentation" width="100%" style="max-width:480px; margin:0 auto; background:#ffffff; border-radius:8px; overflow:hidden;">
+          <tr>
+            <td style="background:#1a1a1a; padding:28px 30px; text-align:center;">
+              <span style="font-family:Georgia, 'Times New Roman', serif; font-size:26px; font-weight:bold; letter-spacing:3px; text-transform:uppercase;">
+                <span style="color:#5FBF9F;">Maria</span><span style="color:#E8B84B;">Beau</span>
+              </span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:36px 34px 20px;">
+              <h1 style="font-family:Georgia, 'Times New Roman', serif; font-size:22px; color:#1a1a1a; margin:0 0 16px;">Reset Your Password</h1>
+              <p style="font-size:14px; line-height:1.6; color:#555; margin:0 0 26px;">
+                We received a request to reset the password for your MariaBeau account. Click the button below to choose a new password. This link will expire in 1 hour.
+              </p>
+              <div style="text-align:center; margin:32px 0;">
+                <a href="${resetLink}" style="background:#1a1a1a; color:#ffffff; text-decoration:none; padding:14px 40px; font-size:13px; letter-spacing:2px; text-transform:uppercase; font-weight:600; border-radius:4px; display:inline-block;">
+                  Reset Password
+                </a>
+              </div>
+              <p style="font-size:12px; line-height:1.6; color:#999; margin:26px 0 0;">
+                If you didn't request this, you can safely ignore this email — your password will remain unchanged.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#f9f6f2; padding:22px 34px; text-align:center; border-top:1px solid #f0ebe5;">
+              <p style="font-size:11px; color:#aaa; margin:0; letter-spacing:0.5px;">
+                &copy; ${new Date().getFullYear()} MariaBeau. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </div>
+      `
     });
 
     res.json({ success: true, message: 'Reset link sent to your email' });
@@ -345,7 +380,47 @@ app.post('/api/orders', async (req, res) => {
         from: process.env.EMAIL_USER,
         to: shippingAddress.email || 'mariabushra392@gmail.com',
         subject: 'Order Confirmation - MariaBeau',
-        html: `<p>Thank you for your order!</p><p>Order ID: ${orderId}</p><p>Total: Rs. ${totalPrice}</p>`
+        html: `
+        <div style="background:#f5f0eb; padding:40px 20px; font-family:'Helvetica Neue', Arial, sans-serif;">
+          <table role="presentation" width="100%" style="max-width:480px; margin:0 auto; background:#ffffff; border-radius:8px; overflow:hidden;">
+            <tr>
+              <td style="background:#1a1a1a; padding:28px 30px; text-align:center;">
+                <span style="font-family:Georgia, 'Times New Roman', serif; font-size:26px; font-weight:bold; letter-spacing:3px; text-transform:uppercase;">
+                  <span style="color:#5FBF9F;">Maria</span><span style="color:#E8B84B;">Beau</span>
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:36px 34px 20px;">
+                <h1 style="font-family:Georgia, 'Times New Roman', serif; font-size:22px; color:#1a1a1a; margin:0 0 16px;">Thank You For Your Order!</h1>
+                <p style="font-size:14px; line-height:1.6; color:#555; margin:0 0 26px;">
+                  We've received your order and we're getting it ready. Here are your order details:
+                </p>
+                <table role="presentation" width="100%" style="background:#f9f6f2; border-radius:6px; margin-bottom:26px;">
+                  <tr>
+                    <td style="padding:16px 20px; font-size:13px; color:#888;">Order ID</td>
+                    <td style="padding:16px 20px; font-size:13px; color:#1a1a1a; font-weight:600; text-align:right;">#${orderId?.slice(0, 8)}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:0 20px 16px; font-size:13px; color:#888; border-top:1px solid #f0ebe5; padding-top:16px;">Total Amount</td>
+                    <td style="padding:0 20px 16px; font-size:15px; color:#1a1a1a; font-weight:700; text-align:right; border-top:1px solid #f0ebe5; padding-top:16px;">Rs. ${totalPrice}</td>
+                  </tr>
+                </table>
+                <p style="font-size:12px; line-height:1.6; color:#999; margin:0;">
+                  We'll notify you again once your order ships. Thank you for shopping with MariaBeau!
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="background:#f9f6f2; padding:22px 34px; text-align:center; border-top:1px solid #f0ebe5;">
+                <p style="font-size:11px; color:#aaa; margin:0; letter-spacing:0.5px;">
+                  &copy; ${new Date().getFullYear()} MariaBeau. All rights reserved.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </div>
+        `
       });
     } catch (emailError) {
       console.error('⚠️ Email send failed:', emailError.message);
