@@ -444,6 +444,57 @@ app.post('/api/orders', async (req, res) => {
 // ============================================
 
 // GET ALL ORDERS (Admin only)
+// TRACK ORDER (Customer — no login required, verified by order ID + email)
+app.post('/api/orders/track', async (req, res) => {
+  try {
+    const { orderId, email } = req.body;
+
+    if (!orderId || !orderId.trim() || !email || !email.trim()) {
+      return res.status(400).json({ success: false, message: 'Order ID and email are required' });
+    }
+
+    const connection = await connectDB();
+    // Customers only ever see the first 8 characters of their order ID
+    // (on the success page / confirmation email), so match by prefix.
+    const [orders] = await connection.query(
+      'SELECT * FROM orders WHERE id LIKE ? LIMIT 1',
+      [`${orderId.trim()}%`]
+    );
+
+    if (orders.length === 0) {
+      return res.status(404).json({ success: false, message: 'Order not found. Please check your order number.' });
+    }
+
+    const order = orders[0];
+    let shippingAddress = {};
+    try {
+      shippingAddress = JSON.parse(order.shipping_address);
+    } catch (e) {
+      shippingAddress = {};
+    }
+
+    const orderEmail = (shippingAddress.email || '').toLowerCase().trim();
+    if (!orderEmail || orderEmail !== email.toLowerCase().trim()) {
+      // Same generic message as "not found" — avoids revealing whether the order exists to someone guessing.
+      return res.status(404).json({ success: false, message: 'Order not found. Please check your order number.' });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        id: order.id,
+        status: order.status,
+        total_price: order.total_price,
+        payment_method: order.payment_method,
+        created_at: order.created_at
+      }
+    });
+  } catch (error) {
+    console.error('❌ Track order error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 app.get('/api/orders/admin/all', async (req, res) => {
   try {
     await requireAdmin(req);
