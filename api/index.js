@@ -226,7 +226,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     );
 
     await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+      from: `"MariaBeau" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: 'Reset Your Password - MariaBeau',
       html: `
@@ -377,7 +377,7 @@ app.post('/api/orders', async (req, res) => {
 
     try {
       await transporter.sendMail({
-        from: process.env.EMAIL_USER,
+        from: `"MariaBeau" <${process.env.EMAIL_USER}>`,
         to: shippingAddress.email || 'mariabushra392@gmail.com',
         subject: 'Order Confirmation - MariaBeau',
         html: `
