@@ -458,7 +458,7 @@ app.post('/api/orders/track', async (req, res) => {
     // (on the success page / confirmation email), so match by prefix.
     const [orders] = await connection.query(
       'SELECT * FROM orders WHERE id LIKE ? LIMIT 1',
-      [`${orderId.trim()}%`]
+      [`${orderId.trim().replace(/^#/, '')}%`]
     );
 
     if (orders.length === 0) {
