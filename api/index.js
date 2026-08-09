@@ -98,6 +98,28 @@ const requireAdmin = async (req) => {
   return users[0];
 };
 
+// Like requireAdmin, but for any logged-in user (used for submitting reviews).
+const requireUser = async (req) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    const err = new Error('Please log in to write a review');
+    err.status = 401;
+    throw err;
+  }
+
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  const connection = await connectDB();
+  const [users] = await connection.query('SELECT id, name FROM users WHERE id = ?', [decoded.id]);
+
+  if (users.length === 0) {
+    const err = new Error('User not found');
+    err.status = 404;
+    throw err;
+  }
+
+  return users[0];
+};
+
 // ============================================
 // ROOT ROUTE
 // ============================================
@@ -351,6 +373,26 @@ app.post('/api/orders', async (req, res) => {
     const { totalPrice, shippingAddress, paymentMethod, items } = req.body;
     const connection = await connectDB();
 
+    if (!items || items.length === 0) {
+      return res.status(400).json({ success: false, message: 'Your cart is empty' });
+    }
+
+    // Validate stock for every item BEFORE creating the order — never trust
+    // frontend-only checks, since stock could have changed since the page loaded.
+    for (const item of items) {
+      const [productRows] = await connection.query('SELECT id, name, stock FROM products WHERE id = ?', [item.product_id]);
+      if (productRows.length === 0) {
+        return res.status(400).json({ success: false, message: 'One of the items in your cart no longer exists.' });
+      }
+      const available = productRows[0].stock;
+      if (item.quantity > available) {
+        return res.status(400).json({
+          success: false,
+          message: `Sorry, only ${available} item${available === 1 ? '' : 's'} of "${productRows[0].name}" ${available === 1 ? 'is' : 'are'} available in stock.`
+        });
+      }
+    }
+
     const token = req.headers.authorization?.split(' ')[1];
     let userId = null;
     if (token) {
@@ -372,6 +414,12 @@ app.post('/api/orders', async (req, res) => {
       await connection.query(
         'INSERT INTO order_items (id, order_id, product_id, quantity, price) VALUES (UUID(), ?, ?, ?, ?)',
         [orderId, item.product_id, item.quantity, item.price]
+      );
+      // Decrease stock now that the order is confirmed. The "stock >= ?" guard
+      // prevents it from ever going negative even under rare concurrent orders.
+      await connection.query(
+        'UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?',
+        [item.quantity, item.product_id, item.quantity]
       );
     }
 
@@ -519,7 +567,28 @@ app.put('/api/orders/:id/status', async (req, res) => {
     await requireAdmin(req);
     const { status } = req.body;
     const connection = await connectDB();
+
+    const [existing] = await connection.query('SELECT status FROM orders WHERE id = ?', [req.params.id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+    const previousStatus = existing[0].status;
+
     await connection.query('UPDATE orders SET status = ? WHERE id = ?', [status, req.params.id]);
+
+    // Restore stock only when moving INTO "cancelled" from a non-cancelled
+    // state — checking previousStatus prevents restoring twice if an admin
+    // sets it to "cancelled" more than once.
+    if (status === 'cancelled' && previousStatus !== 'cancelled') {
+      const [orderItems] = await connection.query(
+        'SELECT product_id, quantity FROM order_items WHERE order_id = ?',
+        [req.params.id]
+      );
+      for (const oi of orderItems) {
+        await connection.query('UPDATE products SET stock = stock + ? WHERE id = ?', [oi.quantity, oi.product_id]);
+      }
+    }
+
     res.json({ success: true, message: 'Order status updated' });
   } catch (error) {
     console.error('❌ Update order status error:', error.message);
@@ -708,6 +777,58 @@ app.delete('/api/products/:id', async (req, res) => {
     res.json({ success: true, message: 'Product deleted successfully' });
   } catch (error) {
     console.error('❌ Delete product error:', error.message);
+    const status = error.status || 500;
+    res.status(status).json({ success: false, message: error.message || 'Server error' });
+  }
+});
+
+// ============================================
+// ⭐ REVIEWS
+// ============================================
+
+// GET ALL REVIEWS FOR A PRODUCT (public)
+app.get('/api/products/:id/reviews', async (req, res) => {
+  try {
+    const connection = await connectDB();
+    const [reviews] = await connection.query(
+      'SELECT id, user_name, rating, comment, created_at FROM reviews WHERE product_id = ? ORDER BY created_at DESC',
+      [req.params.id]
+    );
+    res.json({ success: true, data: reviews });
+  } catch (error) {
+    console.error('❌ Get reviews error:', error.message);
+    res.status(500).json({ success: false, message: 'Error fetching reviews' });
+  }
+});
+
+// SUBMIT A REVIEW (any logged-in user)
+app.post('/api/products/:id/reviews', async (req, res) => {
+  try {
+    const user = await requireUser(req);
+    const { rating, comment } = req.body;
+    const ratingNum = parseInt(rating);
+
+    if (!ratingNum || ratingNum < 1 || ratingNum > 5) {
+      return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
+    }
+
+    const connection = await connectDB();
+    await connection.query(
+      'INSERT INTO reviews (id, product_id, user_id, user_name, rating, comment) VALUES (UUID(), ?, ?, ?, ?, ?)',
+      [req.params.id, user.id, user.name, ratingNum, comment || null]
+    );
+
+    // Keep the product's average rating in sync with its reviews.
+    const [avgResult] = await connection.query(
+      'SELECT AVG(rating) AS avgRating FROM reviews WHERE product_id = ?',
+      [req.params.id]
+    );
+    const newAvg = avgResult[0].avgRating || 0;
+    await connection.query('UPDATE products SET rating = ? WHERE id = ?', [newAvg, req.params.id]);
+
+    res.json({ success: true, message: 'Review submitted successfully' });
+  } catch (error) {
+    console.error('❌ Add review error:', error.message);
     const status = error.status || 500;
     res.status(status).json({ success: false, message: error.message || 'Server error' });
   }
