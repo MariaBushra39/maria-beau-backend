@@ -301,7 +301,32 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       from: `"MariaBeau" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: 'Reset Your Password - MariaBeau',
-      html: `...` // full branded email HTML (unchanged)
+      html: `
+        <div style="max-width:600px;margin:0 auto;font-family:Georgia,'Times New Roman',serif;background:#faf7f2;">
+          <div style="background:#1a1a1a;padding:36px 24px;text-align:center;">
+            <span style="font-size:30px;font-weight:bold;letter-spacing:1px;color:#2FA88E;">Maria</span><span style="font-size:30px;font-weight:bold;letter-spacing:1px;color:#B5762E;">Beau</span>
+            <div style="width:60px;height:2px;background:#B5762E;margin:14px auto 0 auto;"></div>
+          </div>
+          <div style="background:#ffffff;padding:40px 32px;">
+            <h1 style="font-size:22px;color:#1a1a1a;margin:0 0 12px 0;text-align:center;">Reset Your Password</h1>
+            <p style="font-size:15px;color:#666;line-height:1.6;margin:0 0 28px 0;text-align:center;">
+              We received a request to reset the password for your MariaBeau account.<br>
+              Click the button below to choose a new password. This link expires in 1 hour.
+            </p>
+            <div style="text-align:center;margin-bottom:28px;">
+              <a href="${resetLink}" style="display:inline-block;background:#1a1a1a;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:4px;font-size:15px;font-weight:bold;">
+                Reset Password
+              </a>
+            </div>
+            <p style="font-size:13px;color:#aaa;line-height:1.6;margin:0;text-align:center;">
+              If you didn't request this, you can safely ignore this email — your password will remain unchanged.
+            </p>
+          </div>
+          <div style="text-align:center;padding:20px;font-size:12px;color:#aaa;">
+            © ${new Date().getFullYear()} MariaBeau. All rights reserved.
+          </div>
+        </div>
+      `
     });
     res.json({ success: true, message: 'Reset link sent to your email' });
   } catch (error) {
