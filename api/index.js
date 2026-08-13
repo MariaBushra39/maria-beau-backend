@@ -179,6 +179,39 @@ app.post('/api/coupons/validate', (req, res) => {
 });
 
 // ============================================
+// ✅ NEW: EMAIL DIAGNOSTIC ROUTE
+// Visit this URL directly in your browser after deploying to see the
+// REAL error if email sending is broken (e.g. Gmail app password issue).
+// Remove this route once email is confirmed working.
+// ============================================
+app.get('/api/test-email', async (req, res) => {
+  const testTo = req.query.to || process.env.EMAIL_USER;
+  try {
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      return res.status(500).json({
+        success: false,
+        message: 'EMAIL_USER or EMAIL_PASS is missing from Vercel environment variables.'
+      });
+    }
+    await transporter.sendMail({
+      from: `"MariaBeau" <${process.env.EMAIL_USER}>`,
+      to: testTo,
+      subject: 'MariaBeau — Test Email',
+      html: `<p>This is a test email sent at ${new Date().toISOString()}. If you received this, email sending is working correctly.</p>`
+    });
+    res.json({ success: true, message: `Test email sent to ${testTo}. Check the inbox (and spam folder).` });
+  } catch (error) {
+    console.error('❌ Test email error:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send test email',
+      error: error.message,
+      code: error.code || null
+    });
+  }
+});
+
+// ============================================
 // 🔐 AUTH ROUTES
 // ============================================
 
