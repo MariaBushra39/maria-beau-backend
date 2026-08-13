@@ -620,25 +620,55 @@ app.get('/api/orders/admin/all', async (req, res) => {
     await requireAdmin(req);
     const connection = await connectDB();
     const [rows] = await connection.query(
-      `SELECT o.*, u.name AS user_name 
+      `SELECT o.*, u.name AS user_name, u.email AS user_email
        FROM orders o 
        LEFT JOIN users u ON o.user_id = u.id 
        ORDER BY o.created_at DESC`
     );
-    // ✅ NEW: for guest orders (no logged-in user), pull the name they actually
-    // typed at checkout out of the stored shipping_address JSON instead of
-    // falling back to the generic "Guest" label.
-    const ordersWithNames = rows.map(order => {
-      if (order.user_name) return order;
-      let guestName = 'Guest';
+
+    // ✅ NEW: fetch every order's line items (product name, qty, price) in one query
+    const orderIds = rows.map(o => o.id);
+    let itemsByOrder = {};
+    if (orderIds.length > 0) {
+      const [itemRows] = await connection.query(
+        `SELECT oi.order_id, oi.quantity, oi.price, p.name AS product_name
+         FROM order_items oi
+         LEFT JOIN products p ON oi.product_id = p.id
+         WHERE oi.order_id IN (?)`,
+        [orderIds]
+      );
+      itemRows.forEach(item => {
+        if (!itemsByOrder[item.order_id]) itemsByOrder[item.order_id] = [];
+        itemsByOrder[item.order_id].push({
+          name: item.product_name || 'Unknown Product',
+          quantity: item.quantity,
+          price: item.price
+        });
+      });
+    }
+
+    // ✅ NEW: for guest orders, pull name/email from the stored shipping_address
+    // JSON instead of falling back to generic "Guest" with no email.
+    const ordersWithDetails = rows.map(order => {
+      let displayName = order.user_name;
+      let displayEmail = order.user_email;
       try {
         const addr = JSON.parse(order.shipping_address);
-        const fullName = `${addr.firstName || ''} ${addr.lastName || ''}`.trim();
-        if (fullName) guestName = fullName;
+        if (!displayName) {
+          const fullName = `${addr.firstName || ''} ${addr.lastName || ''}`.trim();
+          if (fullName) displayName = fullName;
+        }
+        if (!displayEmail) displayEmail = addr.email;
       } catch (e) {}
-      return { ...order, user_name: guestName };
+      return {
+        ...order,
+        user_name: displayName || 'Guest',
+        user_email: displayEmail || null,
+        items: itemsByOrder[order.id] || []
+      };
     });
-    res.json({ success: true, data: ordersWithNames });
+
+    res.json({ success: true, data: ordersWithDetails });
   } catch (error) {
     console.error('❌ Admin get orders error:', error.message);
     const status = error.status || 500;
