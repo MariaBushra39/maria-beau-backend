@@ -9,12 +9,36 @@ const nodemailer = require('nodemailer');
 const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit'); // ✅ NEW
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// ============================================
+// ✅ NEW: RATE LIMITERS
+// Protects against brute-force login attempts and order/checkout spam.
+// ============================================
+
+// Login/Register/Forgot-Password — max 8 attempts per IP every 15 minutes
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  message: { success: false, message: 'Too many attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// Order placement (guest + logged-in) — max 10 orders per IP every 30 minutes
+const orderLimiter = rateLimit({
+  windowMs: 30 * 60 * 1000,
+  max: 10,
+  message: { success: false, message: 'Too many orders placed from this device. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
 // ============================================
 // ✅ CLOUDINARY — ENVIRONMENT VARIABLES (SECURE)
@@ -216,7 +240,7 @@ app.get('/api/test-email', async (req, res) => {
 // ============================================
 
 // ✅ REGISTER — includes id in JWT
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { name, email, password } = req.body;
     const connection = await connectDB();
@@ -252,7 +276,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     const connection = await connectDB();
@@ -283,7 +307,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-app.post('/api/auth/forgot-password', async (req, res) => {
+app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     const connection = await connectDB();
@@ -400,7 +424,7 @@ app.get('/api/auth/me', async (req, res) => {
 // ✅ NEW: accepts billingAddress + couponCode, discount recalculated server-side.
 // ============================================
 
-app.post('/api/orders', async (req, res) => {
+app.post('/api/orders', orderLimiter, async (req, res) => {
   let connection;
   try {
     const { shippingAddress, billingAddress, paymentMethod, couponCode, items } = req.body;
