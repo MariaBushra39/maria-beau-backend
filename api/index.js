@@ -631,7 +631,7 @@ app.get('/api/orders/admin/all', async (req, res) => {
     let itemsByOrder = {};
     if (orderIds.length > 0) {
       const [itemRows] = await connection.query(
-        `SELECT oi.order_id, oi.quantity, oi.price, p.name AS product_name
+        `SELECT oi.order_id, oi.quantity, oi.price, p.name AS product_name, p.images AS product_images, p.category, p.subcategory
          FROM order_items oi
          LEFT JOIN products p ON oi.product_id = p.id
          WHERE oi.order_id IN (?)`,
@@ -642,7 +642,10 @@ app.get('/api/orders/admin/all', async (req, res) => {
         itemsByOrder[item.order_id].push({
           name: item.product_name || 'Unknown Product',
           quantity: item.quantity,
-          price: item.price
+          price: item.price,
+          images: parseImages(item.product_images), // ✅ NEW: for admin thumbnail
+          category: item.category || null,           // ✅ NEW
+          subcategory: item.subcategory || null       // ✅ NEW
         });
       });
     }
