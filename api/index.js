@@ -498,13 +498,43 @@ app.post('/api/orders', async (req, res) => {
       // 7️⃣ COMMIT
       await connection.commit();
 
-      // 8️⃣ Send confirmation email (non-blocking)
+      // 8️⃣ Send confirmation email (non-blocking) — ✅ branded HTML template (same for guest & logged-in)
       try {
         await transporter.sendMail({
           from: `"MariaBeau" <${process.env.EMAIL_USER}>`,
           to: shippingAddress.email,
           subject: 'Order Confirmation - MariaBeau',
-          html: `<p>Order #${orderId.slice(0, 8)} placed successfully! Total: Rs. ${totalPrice}</p>`
+          html: `
+            <div style="max-width:600px;margin:0 auto;font-family:Georgia,'Times New Roman',serif;background:#faf7f2;">
+              <div style="background:#1a1a1a;padding:32px 24px;text-align:left;">
+                <span style="font-size:28px;font-weight:bold;color:#2FA88E;">Maria</span><span style="font-size:28px;font-weight:bold;color:#B5762E;">Beau</span>
+              </div>
+              <div style="background:#ffffff;padding:36px 28px;">
+                <h1 style="font-size:26px;color:#1a1a1a;margin:0 0 16px 0;">Thank You For Your Order!</h1>
+                <p style="font-size:15px;color:#555;line-height:1.6;margin:0 0 24px 0;">
+                  We've received your order and we're getting it ready. Here are your order details:
+                </p>
+                <div style="background:#faf7f2;border:1px solid #e8dcc4;border-radius:6px;padding:20px 24px;margin-bottom:24px;">
+                  <table style="width:100%;border-collapse:collapse;">
+                    <tr>
+                      <td style="padding:8px 0;color:#888;font-size:14px;border-bottom:1px solid #e8dcc4;">Order ID</td>
+                      <td style="padding:8px 0;color:#1a1a1a;font-size:16px;font-weight:bold;text-align:right;border-bottom:1px solid #e8dcc4;">#${orderId.slice(0, 8)}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:8px 0;color:#888;font-size:14px;">Total Amount</td>
+                      <td style="padding:8px 0;color:#B5762E;font-size:18px;font-weight:bold;text-align:right;">Rs. ${totalPrice}</td>
+                    </tr>
+                  </table>
+                </div>
+                <p style="font-size:14px;color:#888;line-height:1.6;margin:0;">
+                  We'll notify you again once your order ships. Thank you for shopping with MariaBeau!
+                </p>
+              </div>
+              <div style="text-align:center;padding:20px;font-size:12px;color:#aaa;">
+                © ${new Date().getFullYear()} MariaBeau. All rights reserved.
+              </div>
+            </div>
+          `
         });
       } catch (emailError) {
         console.error('⚠️ Email send failed:', emailError.message);
