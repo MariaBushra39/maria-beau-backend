@@ -558,7 +558,20 @@ app.get('/api/orders/admin/all', async (req, res) => {
        LEFT JOIN users u ON o.user_id = u.id 
        ORDER BY o.created_at DESC`
     );
-    res.json({ success: true, data: rows });
+    // ✅ NEW: for guest orders (no logged-in user), pull the name they actually
+    // typed at checkout out of the stored shipping_address JSON instead of
+    // falling back to the generic "Guest" label.
+    const ordersWithNames = rows.map(order => {
+      if (order.user_name) return order;
+      let guestName = 'Guest';
+      try {
+        const addr = JSON.parse(order.shipping_address);
+        const fullName = `${addr.firstName || ''} ${addr.lastName || ''}`.trim();
+        if (fullName) guestName = fullName;
+      } catch (e) {}
+      return { ...order, user_name: guestName };
+    });
+    res.json({ success: true, data: ordersWithNames });
   } catch (error) {
     console.error('❌ Admin get orders error:', error.message);
     const status = error.status || 500;
