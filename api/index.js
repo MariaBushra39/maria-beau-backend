@@ -506,28 +506,32 @@ app.post('/api/orders', async (req, res) => {
           subject: 'Order Confirmation - MariaBeau',
           html: `
             <div style="max-width:600px;margin:0 auto;font-family:Georgia,'Times New Roman',serif;background:#faf7f2;">
-              <div style="background:#1a1a1a;padding:32px 24px;text-align:left;">
-                <span style="font-size:28px;font-weight:bold;color:#2FA88E;">Maria</span><span style="font-size:28px;font-weight:bold;color:#B5762E;">Beau</span>
+              <div style="background:#1a1a1a;padding:36px 24px;text-align:center;">
+                <span style="font-size:30px;font-weight:bold;letter-spacing:1px;color:#2FA88E;">Maria</span><span style="font-size:30px;font-weight:bold;letter-spacing:1px;color:#B5762E;">Beau</span>
+                <div style="width:60px;height:2px;background:#B5762E;margin:14px auto 0 auto;"></div>
               </div>
-              <div style="background:#ffffff;padding:36px 28px;">
-                <h1 style="font-size:26px;color:#1a1a1a;margin:0 0 16px 0;">Thank You For Your Order!</h1>
-                <p style="font-size:15px;color:#555;line-height:1.6;margin:0 0 24px 0;">
-                  We've received your order and we're getting it ready. Here are your order details:
+              <div style="background:#ffffff;padding:40px 32px;">
+                <div style="text-align:center;margin-bottom:28px;">
+                  <div style="display:inline-block;width:56px;height:56px;line-height:56px;border-radius:50%;background:#e9f7f2;color:#2FA88E;font-size:28px;">✓</div>
+                </div>
+                <h1 style="font-size:24px;color:#1a1a1a;margin:0 0 12px 0;text-align:center;">Thank You For Your Order!</h1>
+                <p style="font-size:15px;color:#666;line-height:1.6;margin:0 0 28px 0;text-align:center;">
+                  We've received your order and we're getting it ready.<br>Here are your order details:
                 </p>
-                <div style="background:#faf7f2;border:1px solid #e8dcc4;border-radius:6px;padding:20px 24px;margin-bottom:24px;">
+                <div style="background:#faf7f2;border:1px solid #e8dcc4;border-radius:8px;padding:22px 26px;margin-bottom:28px;">
                   <table style="width:100%;border-collapse:collapse;">
                     <tr>
-                      <td style="padding:8px 0;color:#888;font-size:14px;border-bottom:1px solid #e8dcc4;">Order ID</td>
-                      <td style="padding:8px 0;color:#1a1a1a;font-size:16px;font-weight:bold;text-align:right;border-bottom:1px solid #e8dcc4;">#${orderId.slice(0, 8)}</td>
+                      <td style="padding:10px 0;color:#888;font-size:14px;border-bottom:1px solid #e8dcc4;">Order ID</td>
+                      <td style="padding:10px 0;color:#1a1a1a;font-size:16px;font-weight:bold;text-align:right;border-bottom:1px solid #e8dcc4;">#${orderId.slice(0, 8)}</td>
                     </tr>
                     <tr>
-                      <td style="padding:8px 0;color:#888;font-size:14px;">Total Amount</td>
-                      <td style="padding:8px 0;color:#B5762E;font-size:18px;font-weight:bold;text-align:right;">Rs. ${totalPrice}</td>
+                      <td style="padding:10px 0;color:#888;font-size:14px;">Total Amount</td>
+                      <td style="padding:10px 0;color:#B5762E;font-size:19px;font-weight:bold;text-align:right;">Rs. ${totalPrice}</td>
                     </tr>
                   </table>
                 </div>
-                <p style="font-size:14px;color:#888;line-height:1.6;margin:0;">
-                  We'll notify you again once your order ships. Thank you for shopping with MariaBeau!
+                <p style="font-size:14px;color:#888;line-height:1.6;margin:0;text-align:center;">
+                  We'll notify you again once your order ships.<br>Thank you for shopping with MariaBeau!
                 </p>
               </div>
               <div style="text-align:center;padding:20px;font-size:12px;color:#aaa;">
@@ -683,7 +687,7 @@ app.put('/api/orders/:id/status', async (req, res) => {
     // Commit transaction
     await connection.commit();
 
-    // Send status update email (non-blocking)
+    // Send status update email (non-blocking) — ✅ branded HTML, same for guest & logged-in
     try {
       const [orderRows] = await connection.query(`
         SELECT o.*, u.email as user_email, u.name as user_name
@@ -701,12 +705,47 @@ app.put('/api/orders/:id/status', async (req, res) => {
           } catch (e) {}
         }
         if (customerEmail) {
-          const statusDisplay = status.charAt(0).toUpperCase() + status.slice(1);
+          // ✅ Status-specific display text, color, and message
+          const statusMap = {
+            pending: { label: 'Pending', color: '#B5762E', message: 'Your order is being reviewed and will be processed shortly.' },
+            confirmed: { label: 'Confirmed', color: '#2FA88E', message: 'Your order has been confirmed and is being prepared.' },
+            processing: { label: 'Processing', color: '#2FA88E', message: 'Your order is currently being processed.' },
+            shipped: { label: 'Shipped', color: '#2FA88E', message: 'Great news — your order is on its way to you!' },
+            delivered: { label: 'Delivered', color: '#2FA88E', message: 'Your order has been delivered. We hope you love it!' },
+            cancelled: { label: 'Cancelled', color: '#c0392b', message: 'Your order has been cancelled. If this was unexpected, please contact us.' }
+          };
+          const info = statusMap[status] || { label: status, color: '#B5762E', message: 'Your order status has been updated.' };
+
           await transporter.sendMail({
             from: `"MariaBeau" <${process.env.EMAIL_USER}>`,
             to: customerEmail,
-            subject: `Order ${statusDisplay} - MariaBeau`,
-            html: `<p>Your order #${order.id.slice(0, 8)} has been <strong>${status}</strong>.</p>`
+            subject: `Order ${info.label} - MariaBeau`,
+            html: `
+              <div style="max-width:600px;margin:0 auto;font-family:Georgia,'Times New Roman',serif;background:#faf7f2;">
+                <div style="background:#1a1a1a;padding:36px 24px;text-align:center;">
+                  <span style="font-size:30px;font-weight:bold;letter-spacing:1px;color:#2FA88E;">Maria</span><span style="font-size:30px;font-weight:bold;letter-spacing:1px;color:#B5762E;">Beau</span>
+                  <div style="width:60px;height:2px;background:#B5762E;margin:14px auto 0 auto;"></div>
+                </div>
+                <div style="background:#ffffff;padding:40px 32px;">
+                  <div style="text-align:center;margin-bottom:24px;">
+                    <span style="display:inline-block;padding:8px 20px;border-radius:20px;background:${info.color}1A;color:${info.color};font-size:14px;font-weight:bold;letter-spacing:0.5px;">
+                      ${info.label.toUpperCase()}
+                    </span>
+                  </div>
+                  <h1 style="font-size:22px;color:#1a1a1a;margin:0 0 12px 0;text-align:center;">Order ${info.label}</h1>
+                  <p style="font-size:15px;color:#666;line-height:1.6;margin:0 0 28px 0;text-align:center;">
+                    ${info.message}
+                  </p>
+                  <div style="background:#faf7f2;border:1px solid #e8dcc4;border-radius:8px;padding:18px 26px;margin-bottom:8px;text-align:center;">
+                    <span style="color:#888;font-size:14px;">Order ID: </span>
+                    <span style="color:#1a1a1a;font-size:16px;font-weight:bold;">#${order.id.slice(0, 8)}</span>
+                  </div>
+                </div>
+                <div style="text-align:center;padding:20px;font-size:12px;color:#aaa;">
+                  © ${new Date().getFullYear()} MariaBeau. All rights reserved.
+                </div>
+              </div>
+            `
           });
         }
       }
