@@ -14,6 +14,7 @@ const rateLimit = require('express-rate-limit'); // ✅ NEW
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1); // ✅ NEW: required for rate limiting to work correctly on Vercel
 app.use(cors());
 app.use(express.json());
 
