@@ -54,15 +54,6 @@ cloudinary.config({
 const upload = multer({ storage: multer.memoryStorage() });
 
 // ============================================
-// ✅ NEW: COUPON CODES (simple in-memory map for now)
-// Move to a DB table later if you want admin-managed coupons.
-// ============================================
-const COUPONS = {
-  WELCOME10: { type: 'percent', value: 10 },
-  FLAT200: { type: 'flat', value: 200 }
-};
-
-// ============================================
 // DATABASE CONNECTION — ✅ FIXED: now a pool instead of a single shared connection
 // A single shared connection was unsafe on Vercel serverless, since concurrent
 // requests on the same warm instance could interleave transactions on it.
@@ -155,7 +146,7 @@ const requireUser = async (req) => {
   }
   const decoded = jwt.verify(token, process.env.JWT_SECRET);
   const connection = await connectDB();
-  const [users] = await connection.query('SELECT id, name FROM users WHERE id = ?', [decoded.id]);
+  const [users] = await connection.query('SELECT id, name, email FROM users WHERE id = ?', [decoded.id]);
   if (users.length === 0) {
     const err = new Error('User not found');
     err.status = 404;
@@ -191,16 +182,113 @@ app.get('/api/db-test', async (req, res) => {
 });
 
 // ============================================
-// ✅ NEW: COUPON VALIDATION ROUTE
+// ✅ CHANGED: COUPON VALIDATION ROUTE — now checks the database
+// (active coupons that haven't expired) instead of a hardcoded list.
 // ============================================
-app.post('/api/coupons/validate', (req, res) => {
-  const { code } = req.body;
-  const key = (code || '').trim().toUpperCase();
-  const coupon = COUPONS[key];
-  if (!coupon) {
-    return res.status(404).json({ success: false, message: 'Invalid coupon code' });
+app.post('/api/coupons/validate', async (req, res) => {
+  try {
+    const { code } = req.body;
+    const key = (code || '').trim().toUpperCase();
+    if (!key) {
+      return res.status(400).json({ success: false, message: 'Please enter a coupon code' });
+    }
+    const connection = await connectDB();
+    const [rows] = await connection.query(
+      `SELECT type, value FROM coupons
+       WHERE code = ? AND active = 1 AND (expires_at IS NULL OR expires_at > NOW())`,
+      [key]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Invalid or expired coupon code' });
+    }
+    res.json({ success: true, data: rows[0] }); // { type: 'percent'|'flat', value }
+  } catch (error) {
+    console.error('❌ Coupon validate error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
-  res.json({ success: true, data: coupon }); // { type: 'percent'|'flat', value }
+});
+
+// ============================================
+// ✅ NEW: COUPON MANAGEMENT (ADMIN)
+// ============================================
+
+// List all coupons (active + inactive) for the admin panel
+app.get('/api/coupons/admin/all', async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const connection = await connectDB();
+    const [rows] = await connection.query('SELECT * FROM coupons ORDER BY created_at DESC');
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('❌ Get coupons error:', error.message);
+    const status = error.status || 500;
+    res.status(status).json({ success: false, message: error.message || 'Server error' });
+  }
+});
+
+// Create a new coupon
+app.post('/api/coupons', async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const { code, type, value, expires_at } = req.body;
+    const cleanCode = (code || '').trim().toUpperCase();
+
+    if (!cleanCode || !['percent', 'flat'].includes(type) || !value || Number(value) <= 0) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid code, type, and value.' });
+    }
+    if (type === 'percent' && Number(value) > 100) {
+      return res.status(400).json({ success: false, message: 'Percentage discount cannot exceed 100.' });
+    }
+
+    const connection = await connectDB();
+    const [existing] = await connection.query('SELECT id FROM coupons WHERE code = ?', [cleanCode]);
+    if (existing.length > 0) {
+      return res.status(400).json({ success: false, message: 'A coupon with this code already exists.' });
+    }
+
+    await connection.query(
+      'INSERT INTO coupons (id, code, type, value, expires_at) VALUES (UUID(), ?, ?, ?, ?)',
+      [cleanCode, type, value, expires_at || null]
+    );
+    res.json({ success: true, message: 'Coupon created successfully' });
+  } catch (error) {
+    console.error('❌ Create coupon error:', error.message);
+    const status = error.status || 500;
+    res.status(status).json({ success: false, message: error.message || 'Server error' });
+  }
+});
+
+// Toggle a coupon active/inactive
+app.put('/api/coupons/:id/toggle', async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const connection = await connectDB();
+    const [rows] = await connection.query('SELECT active FROM coupons WHERE id = ?', [req.params.id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Coupon not found' });
+    }
+    const newActive = rows[0].active ? 0 : 1;
+    await connection.query('UPDATE coupons SET active = ? WHERE id = ?', [newActive, req.params.id]);
+    res.json({ success: true, message: newActive ? 'Coupon activated' : 'Coupon deactivated' });
+  } catch (error) {
+    console.error('❌ Toggle coupon error:', error.message);
+    const status = error.status || 500;
+    res.status(status).json({ success: false, message: error.message || 'Server error' });
+  }
+});
+
+// Delete a coupon
+app.delete('/api/coupons/:id', async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const connection = await connectDB();
+    await connection.query('DELETE FROM coupons WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'Coupon deleted' });
+  } catch (error) {
+    console.error('❌ Delete coupon error:', error.message);
+    const status = error.status || 500;
+    res.status(status).json({ success: false, message: error.message || 'Server error' });
+  }
 });
 
 // ============================================
@@ -479,18 +567,25 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       subtotal += product.price * item.quantity;
     }
 
-    // 4️⃣ ✅ NEW: Recalculate discount server-side (never trust client amount)
+    // 4️⃣ ✅ CHANGED: Recalculate discount server-side using the coupons table
+    // (never trust the client-sent discount amount)
     let discountAmount = 0;
     let appliedCouponCode = null;
     if (couponCode) {
-      const coupon = COUPONS[couponCode.trim().toUpperCase()];
-      if (coupon) {
-        appliedCouponCode = couponCode.trim().toUpperCase();
+      const cleanCode = couponCode.trim().toUpperCase();
+      const [couponRows] = await connection.query(
+        `SELECT type, value FROM coupons
+         WHERE code = ? AND active = 1 AND (expires_at IS NULL OR expires_at > NOW())`,
+        [cleanCode]
+      );
+      if (couponRows.length > 0) {
+        const coupon = couponRows[0];
+        appliedCouponCode = cleanCode;
         discountAmount = coupon.type === 'percent'
           ? (subtotal * coupon.value) / 100
           : Math.min(coupon.value, subtotal);
       }
-      // Invalid/unknown coupon codes are silently ignored rather than failing the order
+      // Invalid/expired/unknown coupon codes are silently ignored rather than failing the order
     }
 
     // 5️⃣ Calculate shipping & final total
@@ -616,6 +711,145 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     });
   } finally {
     // ✅ Always release the pooled connection back to the pool
+    if (connection) connection.release();
+  }
+});
+
+// ============================================
+// ✅ NEW: MY ORDERS (logged-in user's own orders + cancel)
+// ============================================
+
+// Get the current logged-in user's own orders, with product line items
+app.get('/api/orders', async (req, res) => {
+  try {
+    const authUser = await requireUser(req);
+    const connection = await connectDB();
+    const [rows] = await connection.query(
+      'SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC',
+      [authUser.id]
+    );
+
+    const orderIds = rows.map(o => o.id);
+    let itemsByOrder = {};
+    if (orderIds.length > 0) {
+      const [itemRows] = await connection.query(
+        `SELECT oi.order_id, oi.quantity, oi.price, p.name AS product_name, p.images AS product_images
+         FROM order_items oi
+         LEFT JOIN products p ON oi.product_id = p.id
+         WHERE oi.order_id IN (?)`,
+        [orderIds]
+      );
+      itemRows.forEach(item => {
+        if (!itemsByOrder[item.order_id]) itemsByOrder[item.order_id] = [];
+        itemsByOrder[item.order_id].push({
+          product_name: item.product_name || 'Unknown Product',
+          quantity: item.quantity,
+          price: item.price,
+          images: parseImages(item.product_images)
+        });
+      });
+    }
+
+    const ordersWithItems = rows.map(order => ({
+      ...order,
+      items: itemsByOrder[order.id] || []
+    }));
+
+    res.json({ success: true, data: ordersWithItems });
+  } catch (error) {
+    console.error('❌ Get my orders error:', error.message);
+    const status = error.status || 500;
+    res.status(status).json({ success: false, message: error.message || 'Server error' });
+  }
+});
+
+// Let a logged-in user cancel their own order — only allowed while it's
+// still pending or confirmed (not once it's already processing/shipped/etc).
+app.put('/api/orders/:id/cancel', async (req, res) => {
+  let connection;
+  try {
+    const authUser = await requireUser(req);
+    connection = await getPool().getConnection();
+    await connection.beginTransaction();
+
+    const [existing] = await connection.query(
+      'SELECT status, user_id FROM orders WHERE id = ? FOR UPDATE',
+      [req.params.id]
+    );
+    if (existing.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+    if (existing[0].user_id !== authUser.id) {
+      await connection.rollback();
+      return res.status(403).json({ success: false, message: 'You are not authorized to cancel this order' });
+    }
+    const cancellableStatuses = ['pending', 'confirmed'];
+    if (!cancellableStatuses.includes(existing[0].status)) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: `This order can no longer be cancelled (current status: ${existing[0].status}). Please contact support if you need help.`
+      });
+    }
+
+    await connection.query('UPDATE orders SET status = ? WHERE id = ?', ['cancelled', req.params.id]);
+
+    // Restore stock for every item in the cancelled order
+    const [orderItems] = await connection.query(
+      'SELECT product_id, quantity FROM order_items WHERE order_id = ?',
+      [req.params.id]
+    );
+    for (const oi of orderItems) {
+      await connection.query('UPDATE products SET stock = stock + ? WHERE id = ?', [oi.quantity, oi.product_id]);
+    }
+
+    await connection.commit();
+
+    // Send a branded cancellation confirmation email (non-blocking)
+    try {
+      await transporter.sendMail({
+        from: `"MariaBeau" <${process.env.EMAIL_USER}>`,
+        to: authUser.email,
+        subject: 'Order Cancelled - MariaBeau',
+        html: `
+          <div style="max-width:600px;margin:0 auto;font-family:Georgia,'Times New Roman',serif;background:#faf7f2;">
+            <div style="background:#1a1a1a;padding:36px 24px;text-align:center;">
+              <span style="font-size:30px;font-weight:bold;letter-spacing:1px;color:#2FA88E;">Maria</span><span style="font-size:30px;font-weight:bold;letter-spacing:1px;color:#B5762E;">Beau</span>
+              <div style="width:60px;height:2px;background:#B5762E;margin:14px auto 0 auto;"></div>
+            </div>
+            <div style="background:#ffffff;padding:40px 32px;">
+              <div style="text-align:center;margin-bottom:24px;">
+                <span style="display:inline-block;padding:8px 20px;border-radius:20px;background:#c0392b1A;color:#c0392b;font-size:14px;font-weight:bold;letter-spacing:0.5px;">
+                  CANCELLED
+                </span>
+              </div>
+              <h1 style="font-size:22px;color:#1a1a1a;margin:0 0 12px 0;text-align:center;">Order Cancelled</h1>
+              <p style="font-size:15px;color:#666;line-height:1.6;margin:0 0 28px 0;text-align:center;">
+                Your order has been cancelled as requested. If this was a mistake, please contact us and we'll be happy to help.
+              </p>
+              <div style="background:#faf7f2;border:1px solid #e8dcc4;border-radius:8px;padding:18px 26px;margin-bottom:8px;text-align:center;">
+                <span style="color:#888;font-size:14px;">Order ID: </span>
+                <span style="color:#1a1a1a;font-size:16px;font-weight:bold;">#${req.params.id.slice(0, 8)}</span>
+              </div>
+            </div>
+            <div style="text-align:center;padding:20px;font-size:12px;color:#aaa;">
+              © ${new Date().getFullYear()} MariaBeau. All rights reserved.
+            </div>
+          </div>
+        `
+      });
+    } catch (emailError) {
+      console.error('⚠️ Cancel email failed:', emailError.message);
+    }
+
+    res.json({ success: true, message: 'Order cancelled successfully' });
+  } catch (error) {
+    if (connection) await connection.rollback().catch(() => {});
+    console.error('❌ Cancel order error:', error.message);
+    const status = error.status || 500;
+    res.status(status).json({ success: false, message: error.message || 'Server error' });
+  } finally {
     if (connection) connection.release();
   }
 });
@@ -1015,8 +1249,9 @@ app.delete('/api/products/:id', async (req, res) => {
 app.get('/api/products/:id/reviews', async (req, res) => {
   try {
     const connection = await connectDB();
+    // ✅ CHANGED: only show reviews the admin has approved
     const [reviews] = await connection.query(
-      'SELECT id, user_name, rating, comment, created_at FROM reviews WHERE product_id = ? ORDER BY created_at DESC',
+      'SELECT id, user_name, rating, comment, created_at FROM reviews WHERE product_id = ? AND approved = 1 ORDER BY created_at DESC',
       [req.params.id]
     );
     res.json({ success: true, data: reviews });
@@ -1035,19 +1270,86 @@ app.post('/api/products/:id/reviews', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
     }
     const connection = await connectDB();
+    // ✅ CHANGED: reviews start as unapproved (approved = 0) and don't affect
+    // the product's average rating until an admin approves them.
     await connection.query(
-      'INSERT INTO reviews (id, product_id, user_id, user_name, rating, comment) VALUES (UUID(), ?, ?, ?, ?, ?)',
+      'INSERT INTO reviews (id, product_id, user_id, user_name, rating, comment, approved) VALUES (UUID(), ?, ?, ?, ?, ?, 0)',
       [req.params.id, user.id, user.name, ratingNum, comment || null]
     );
-    const [avgResult] = await connection.query(
-      'SELECT AVG(rating) AS avgRating FROM reviews WHERE product_id = ?',
-      [req.params.id]
-    );
-    const newAvg = avgResult[0].avgRating || 0;
-    await connection.query('UPDATE products SET rating = ? WHERE id = ?', [newAvg, req.params.id]);
-    res.json({ success: true, message: 'Review submitted successfully' });
+    res.json({ success: true, message: 'Review submitted! It will appear on the product page once approved.' });
   } catch (error) {
     console.error('❌ Add review error:', error.message);
+    const status = error.status || 500;
+    res.status(status).json({ success: false, message: error.message || 'Server error' });
+  }
+});
+
+// ============================================
+// ✅ NEW: REVIEW MODERATION (admin only)
+// ============================================
+
+// Recalculates a product's average rating using only approved reviews
+const recalcProductRating = async (connection, productId) => {
+  const [avgResult] = await connection.query(
+    'SELECT AVG(rating) AS avgRating FROM reviews WHERE product_id = ? AND approved = 1',
+    [productId]
+  );
+  const newAvg = avgResult[0].avgRating || 0;
+  await connection.query('UPDATE products SET rating = ? WHERE id = ?', [newAvg, productId]);
+};
+
+// List all reviews (pending first) with product name, for the admin moderation queue
+app.get('/api/reviews/admin/all', async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const connection = await connectDB();
+    const [rows] = await connection.query(
+      `SELECT r.*, p.name AS product_name
+       FROM reviews r
+       LEFT JOIN products p ON r.product_id = p.id
+       ORDER BY r.approved ASC, r.created_at DESC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('❌ Admin get reviews error:', error.message);
+    const status = error.status || 500;
+    res.status(status).json({ success: false, message: error.message || 'Server error' });
+  }
+});
+
+// Approve a pending review — makes it public and updates the product's rating
+app.put('/api/reviews/:id/approve', async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const connection = await connectDB();
+    const [existing] = await connection.query('SELECT product_id FROM reviews WHERE id = ?', [req.params.id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ success: false, message: 'Review not found' });
+    }
+    await connection.query('UPDATE reviews SET approved = 1 WHERE id = ?', [req.params.id]);
+    await recalcProductRating(connection, existing[0].product_id);
+    res.json({ success: true, message: 'Review approved' });
+  } catch (error) {
+    console.error('❌ Approve review error:', error.message);
+    const status = error.status || 500;
+    res.status(status).json({ success: false, message: error.message || 'Server error' });
+  }
+});
+
+// Reject/delete a review — removes it and recalculates the product's rating
+app.delete('/api/reviews/:id', async (req, res) => {
+  try {
+    await requireAdmin(req);
+    const connection = await connectDB();
+    const [existing] = await connection.query('SELECT product_id FROM reviews WHERE id = ?', [req.params.id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ success: false, message: 'Review not found' });
+    }
+    await connection.query('DELETE FROM reviews WHERE id = ?', [req.params.id]);
+    await recalcProductRating(connection, existing[0].product_id);
+    res.json({ success: true, message: 'Review deleted' });
+  } catch (error) {
+    console.error('❌ Delete review error:', error.message);
     const status = error.status || 500;
     res.status(status).json({ success: false, message: error.message || 'Server error' });
   }
