@@ -1356,6 +1356,79 @@ app.delete('/api/reviews/:id', async (req, res) => {
 });
 
 // ============================================
+// ✅ NEW: NEWSLETTER SUBSCRIPTION
+// ============================================
+app.post('/api/newsletter/subscribe', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const cleanEmail = (email || '').trim().toLowerCase();
+
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ success: false, message: 'Please enter a valid email address.' });
+    }
+
+    const connection = await connectDB();
+    const [existing] = await connection.query(
+      'SELECT id FROM newsletter_subscribers WHERE email = ?',
+      [cleanEmail]
+    );
+    if (existing.length > 0) {
+      return res.status(400).json({ success: false, message: 'You are already subscribed!' });
+    }
+
+    await connection.query(
+      'INSERT INTO newsletter_subscribers (id, email) VALUES (UUID(), ?)',
+      [cleanEmail]
+    );
+
+    // Send a branded welcome email (non-blocking — subscription still succeeds if this fails)
+    try {
+      await transporter.sendMail({
+        from: `"MariaBeau" <${process.env.EMAIL_USER}>`,
+        to: cleanEmail,
+        subject: "You're In! Welcome to MariaBeau",
+        html: `
+          <div style="max-width:600px;margin:0 auto;font-family:Georgia,'Times New Roman',serif;background:#faf7f2;">
+            <div style="background:#1a1a1a;padding:36px 24px;text-align:center;">
+              <span style="font-size:30px;font-weight:bold;letter-spacing:1px;color:#2FA88E;">Maria</span><span style="font-size:30px;font-weight:bold;letter-spacing:1px;color:#B5762E;">Beau</span>
+              <div style="width:60px;height:2px;background:#B5762E;margin:14px auto 0 auto;"></div>
+            </div>
+            <div style="background:#ffffff;padding:40px 32px;">
+              <h1 style="font-size:24px;color:#1a1a1a;margin:0 0 12px 0;text-align:center;">You're In! </h1>
+              <p style="font-size:15px;color:#666;line-height:1.6;margin:0 0 28px 0;text-align:center;">
+                Thank you for joining the MariaBeau family. You'll be the first to know about<br>
+                new arrivals, exclusive offers, and seasonal sales.
+              </p>
+              <div style="background:#faf7f2;border:1px solid #e8dcc4;border-radius:8px;padding:22px 26px;margin-bottom:28px;text-align:center;">
+                <p style="margin:0 0 10px 0;font-size:13px;color:#888;">As a welcome gift, enjoy</p>
+                <p style="margin:0 0 12px 0;font-size:22px;font-weight:bold;color:#c0392b;">10% OFF</p>
+                <p style="margin:0;font-size:13px;color:#888;">on your first order — use code</p>
+                <p style="margin:6px 0 0 0;font-size:17px;font-weight:bold;letter-spacing:1.5px;color:#1a1a1a;">MAR39</p>
+              </div>
+              <div style="text-align:center;">
+                <a href="https://maria-beau-frontend-lake.vercel.app" style="display:inline-block;background:#1a1a1a;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:4px;font-size:14px;font-weight:bold;">
+                  Start Shopping
+                </a>
+              </div>
+            </div>
+            <div style="text-align:center;padding:20px;font-size:12px;color:#aaa;">
+              © ${new Date().getFullYear()} MariaBeau. All rights reserved.
+            </div>
+          </div>
+        `
+      });
+    } catch (emailError) {
+      console.error('⚠️ Newsletter welcome email failed:', emailError.message);
+    }
+
+    res.json({ success: true, message: 'Subscribed successfully! Thank you for joining MariaBeau.' });
+  } catch (error) {
+    console.error('❌ Newsletter subscribe error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error. Please try again.' });
+  }
+});
+
+// ============================================
 // 404 HANDLER
 // ============================================
 app.use((req, res) => {
